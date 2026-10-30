@@ -1,0 +1,260 @@
+[gd_scene load_steps=11 format=3 uid="uid://main"]
+
+[ext_resource type="PackedScene" path="res://scenes/Player.tscn" id="1"]
+[ext_resource type="Script" path="res://scripts/Main.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/DayNightCycle.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/WorldGenerator.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/HUD.gd" id="5"]
+[ext_resource type="PackedScene" path="res://scenes/TouchControls.tscn" id="6"]
+[ext_resource type="Script" path="res://scripts/Atmosphere.gd" id="7"]
+[ext_resource type="Texture2D" path="res://assets/textures/ui/icon_health.png" id="8"]
+[ext_resource type="Texture2D" path="res://assets/textures/ui/icon_stamina.png" id="9"]
+[ext_resource type="Texture2D" path="res://assets/textures/ui/icon_coin.png" id="10"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("2")
+
+[node name="World" type="Node2D" parent="."]
+script = ExtResource("4")
+
+[node name="Ground" type="Node2D" parent="World"]
+
+[node name="Trees" type="Node2D" parent="World"]
+
+[node name="Props" type="Node2D" parent="World"]
+
+[node name="Enemies" type="Node2D" parent="World"]
+
+[node name="Atmosphere" type="Node2D" parent="World"]
+script = ExtResource("7")
+
+[node name="Player" parent="." instance=ExtResource("1")]
+position = Vector2(0, 0)
+
+[node name="CanvasModulate" type="CanvasModulate" parent="."]
+color = Color(0.28, 0.3, 0.25, 1)
+
+[node name="DayNightCycle" type="Node" parent="."]
+script = ExtResource("3")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 10
+script = ExtResource("5")
+
+[node name="MarginContainer" type="MarginContainer" parent="HUD"]
+offset_right = 240.0
+offset_bottom = 170.0
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+
+[node name="VBox" type="VBoxContainer" parent="HUD/MarginContainer"]
+custom_minimum_size = Vector2(220, 0)
+theme_override_constants/separation = 8
+
+[node name="HealthRow" type="HBoxContainer" parent="HUD/MarginContainer/VBox"]
+theme_override_constants/separation = 6
+
+[node name="HealthIcon" type="TextureRect" parent="HUD/MarginContainer/VBox/HealthRow"]
+custom_minimum_size = Vector2(28, 28)
+texture = ExtResource("8")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="HealthBar" type="ProgressBar" parent="HUD/MarginContainer/VBox/HealthRow"]
+custom_minimum_size = Vector2(182, 22)
+size_flags_vertical = 4
+max_value = 100.0
+value = 100.0
+show_percentage = false
+theme_override_colors/font_color = Color(0.8, 0.2, 0.2, 1)
+
+[node name="StaminaRow" type="HBoxContainer" parent="HUD/MarginContainer/VBox"]
+theme_override_constants/separation = 6
+
+[node name="StaminaIcon" type="TextureRect" parent="HUD/MarginContainer/VBox/StaminaRow"]
+custom_minimum_size = Vector2(28, 28)
+texture = ExtResource("9")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="StaminaBar" type="ProgressBar" parent="HUD/MarginContainer/VBox/StaminaRow"]
+custom_minimum_size = Vector2(182, 22)
+size_flags_vertical = 4
+max_value = 100.0
+value = 100.0
+show_percentage = false
+theme_override_colors/font_color = Color(0.2, 0.7, 0.2, 1)
+
+[node name="AmmoRow" type="HBoxContainer" parent="HUD/MarginContainer/VBox"]
+theme_override_constants/separation = 6
+
+[node name="AmmoIcon" type="TextureRect" parent="HUD/MarginContainer/VBox/AmmoRow"]
+custom_minimum_size = Vector2(28, 28)
+modulate = Color(0.9, 0.9, 0.9, 1)
+expand_mode = 1
+stretch_mode = 6
+
+[node name="AmmoLabel" type="Label" parent="HUD/MarginContainer/VBox/AmmoRow"]
+text = "12 / 48"
+size_flags_vertical = 4
+theme_override_colors/font_color = Color(0.85, 0.85, 0.85, 1)
+
+[node name="ScoreRow" type="HBoxContainer" parent="HUD/MarginContainer/VBox"]
+theme_override_constants/separation = 6
+
+[node name="CoinIcon" type="TextureRect" parent="HUD/MarginContainer/VBox/ScoreRow"]
+custom_minimum_size = Vector2(28, 28)
+texture = ExtResource("10")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="ScoreLabel" type="Label" parent="HUD/MarginContainer/VBox/ScoreRow"]
+text = "0"
+size_flags_vertical = 4
+theme_override_colors/font_color = Color(1.0, 0.85, 0.2, 1)
+
+[node name="TopRight" type="Control" parent="HUD"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -160.0
+offset_bottom = 40.0
+grow_horizontal = 0
+
+[node name="TimeLabel" type="Label" parent="HUD/TopRight"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -150.0
+offset_right = -10.0
+offset_bottom = 32.0
+text = "DAY 1"
+horizontal_alignment = 1
+
+[node name="ReloadLabel" type="Label" parent="HUD"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -60.0
+offset_top = 40.0
+offset_right = 60.0
+offset_bottom = 70.0
+text = "RELOADING..."
+theme_override_colors/font_color = Color(1, 0.8, 0.2, 1)
+horizontal_alignment = 1
+visible = false
+
+[node name="NightWarning" type="Label" parent="HUD"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -200.0
+offset_top = 60.0
+offset_right = 200.0
+offset_bottom = 100.0
+text = "NIGHT IS FALLING..."
+theme_override_colors/font_color = Color(0.9, 0.3, 0.1, 1)
+horizontal_alignment = 1
+modulate = Color(1, 1, 1, 0)
+
+[node name="PickupPopup" type="Label" parent="HUD"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -60.0
+offset_top = 80.0
+offset_right = 60.0
+offset_bottom = 110.0
+text = ""
+theme_override_colors/font_color = Color(0.3, 1.0, 0.4, 1)
+horizontal_alignment = 1
+modulate = Color(1, 1, 1, 0)
+
+[node name="TouchControls" parent="." instance=ExtResource("6")]
+
+[node name="PauseScreen" type="CanvasLayer" parent="."]
+layer = 25
+visible = false
+
+[node name="BG" type="ColorRect" parent="PauseScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 1920.0
+offset_bottom = 1080.0
+color = Color(0, 0, 0, 0.75)
+mouse_filter = 2
+
+[node name="VBox" type="VBoxContainer" parent="PauseScreen"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -100.0
+offset_right = 150.0
+offset_bottom = 100.0
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="Title" type="Label" parent="PauseScreen/VBox"]
+text = "PAUSED"
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+horizontal_alignment = 1
+
+[node name="ResumeBtn" type="Button" parent="PauseScreen/VBox"]
+custom_minimum_size = Vector2(220, 55)
+text = "RESUME"
+
+[node name="RestartBtn2" type="Button" parent="PauseScreen/VBox"]
+custom_minimum_size = Vector2(220, 55)
+text = "RESTART"
+
+[node name="GameOverScreen" type="CanvasLayer" parent="."]
+layer = 20
+visible = false
+
+[node name="BG" type="ColorRect" parent="GameOverScreen"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 1920.0
+offset_bottom = 1080.0
+color = Color(0, 0, 0, 0.85)
+mouse_filter = 2
+
+[node name="VBox" type="VBoxContainer" parent="GameOverScreen"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -150.0
+offset_top = -100.0
+offset_right = 150.0
+offset_bottom = 100.0
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="Title" type="Label" parent="GameOverScreen/VBox"]
+text = "YOU DIED"
+theme_override_colors/font_color = Color(0.8, 0.1, 0.1, 1)
+horizontal_alignment = 1
+
+[node name="FinalScore" type="Label" parent="GameOverScreen/VBox"]
+text = "SCORE: 0"
+theme_override_colors/font_color = Color(1.0, 0.85, 0.2, 1)
+horizontal_alignment = 1
+
+[node name="RestartBtn" type="Button" parent="GameOverScreen/VBox"]
+custom_minimum_size = Vector2(220, 55)
+text = "TRY AGAIN"
+
+[connection signal="pressed" from="GameOverScreen/VBox/RestartBtn" to="Main" method="_on_restart_pressed"]
+[connection signal="pressed" from="PauseScreen/VBox/ResumeBtn" to="Main" method="_on_resume_pressed"]
+[connection signal="pressed" from="PauseScreen/VBox/RestartBtn2" to="Main" method="_on_restart_pressed"]
