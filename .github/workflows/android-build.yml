@@ -1,0 +1,177 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "*" ]
+    tags: [ "v*" ]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      godot_version:
+        description: "Godot Engine version (e.g. 4.6, 4.5, 4.4, 4.3)"
+        required: false
+        default: "4.6"
+
+env:
+  DEFAULT_GODOT_VERSION: "4.6"
+  RELEASE_SUBTYPE: "stable"
+  EXPORT_NAME: "DarkwoodClone"
+
+jobs:
+  build-android:
+    name: Export Android APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Resolve Godot Version & Project Path (Auto-Extract Zip if Needed)
+        id: config
+        run: |
+          GODOT_VER="${{ github.event.inputs.godot_version || env.DEFAULT_GODOT_VERSION }}"
+          echo "godot_version=${GODOT_VER}" >> "$GITHUB_OUTPUT"
+          echo "godot_minor=${GODOT_VER:0:3}" >> "$GITHUB_OUTPUT"
+
+          # Check if project.godot is already extracted; if not, auto-extract any uploaded .zip file
+          PROJ_FILE=$(find . -maxdepth 3 -name "project.godot" | head -n 1)
+          if [ -z "$PROJ_FILE" ]; then
+            ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
+            if [ -n "$ZIP_FILE" ]; then
+              echo "Found uploaded archive $ZIP_FILE — extracting project folders automatically..."
+              unzip -o -q "$ZIP_FILE" -d .
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              git add -A
+              git commit -m "Auto-extract project folders from $ZIP_FILE" || true
+              git push || true
+            fi
+          fi
+
+          PROJ_FILE=$(find . -maxdepth 3 -name "project.godot" | head -n 1)
+          if [ -z "$PROJ_FILE" ]; then
+            echo "ERROR: project.godot not found in repository!"
+            exit 1
+          fi
+          PROJ_DIR=$(dirname "$PROJ_FILE")
+          echo "project_dir=${PROJ_DIR}" >> "$GITHUB_OUTPUT"
+          echo "Found project.godot in: ${PROJ_DIR}"
+
+      - name: Cache Godot Binary & Export Templates
+        id: cache-godot
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/godot-bin
+            ~/.local/share/godot/export_templates
+          key: godot-${{ steps.config.outputs.godot_version }}-${{ env.RELEASE_SUBTYPE }}
+
+      - name: Download & Install Godot + Export Templates
+        if: steps.cache-godot.outputs.cache-hit != 'true'
+        run: |
+          VER="${{ steps.config.outputs.godot_version }}"
+          SUB="${{ env.RELEASE_SUBTYPE }}"
+          BASE_URL="https://github.com/godotengine/godot-builds/releases/download/${VER}-${SUB}"
+
+          mkdir -p /tmp/godot-bin
+          mkdir -p ~/.local/share/godot/export_templates/${VER}.${SUB}
+
+          echo "Downloading Godot ${VER}-${SUB} Linux binary..."
+          wget -q "${BASE_URL}/Godot_v${VER}-${SUB}_linux.x86_64.zip" -O /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot-bin
+          mv "/tmp/godot-bin/Godot_v${VER}-${SUB}_linux.x86_64" /tmp/godot-bin/godot
+          chmod +x /tmp/godot-bin/godot
+          rm -f /tmp/godot.zip
+
+          echo "Downloading Godot ${VER}-${SUB} Export Templates..."
+          wget -q "${BASE_URL}/Godot_v${VER}-${SUB}_export_templates.tpz" -O /tmp/templates.tpz
+          unzip -q /tmp/templates.tpz -d /tmp/templates-extracted
+          mv /tmp/templates-extracted/templates/* ~/.local/share/godot/export_templates/${VER}.${SUB}/
+          rm -rf /tmp/templates.tpz /tmp/templates-extracted
+
+      - name: Configure Android SDK & Keystore for Godot
+        run: |
+          sudo ln -sf /tmp/godot-bin/godot /usr/local/bin/godot
+          godot --version
+
+          # Generate debug keystore for signing the APK
+          KEYSTORE_PATH="$HOME/debug.keystore"
+          if [ ! -f "$KEYSTORE_PATH" ]; then
+            keytool -keyalg RSA -genkeypair \
+              -alias androiddebugkey \
+              -keypass android \
+              -keystore "$KEYSTORE_PATH" \
+              -storepass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -validity 9999 \
+              -noprompt
+          fi
+
+          # Export environment variables recognized by Godot 4
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=${KEYSTORE_PATH}" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+
+          # Initialize Godot headless editor settings and write Android SDK & JDK paths
+          mkdir -p ~/.config/godot
+          for SETTINGS_FILE in \
+            ~/.config/godot/editor_settings-${{ steps.config.outputs.godot_minor }}.tres \
+            ~/.config/godot/editor_settings-4.tres; do
+            cat <<INNER_EOF > "$SETTINGS_FILE"
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/java_sdk_path = "${JAVA_HOME}"
+          export/android/android_sdk_path = "${ANDROID_HOME}"
+          export/android/debug_keystore = "${KEYSTORE_PATH}"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          export/android/force_system_user = false
+          export/android/timestamping_authority_url = ""
+          export/android/shutdown_adb_on_exit = true
+          INNER_EOF
+          done
+
+      - name: Import Project Assets & Export Android APK
+        run: |
+          BUILD_OUT="${GITHUB_WORKSPACE}/build/android"
+          mkdir -p "$BUILD_OUT"
+
+          cd "${{ steps.config.outputs.project_dir }}"
+
+          echo "Importing project resources..."
+          godot --headless --verbose --editor --quit || true
+
+          echo "Exporting signed Android Debug APK..."
+          godot --headless --verbose --export-debug "Android" "${BUILD_OUT}/${EXPORT_NAME}-debug.apk"
+
+          ls -lh "$BUILD_OUT"
+          if [ ! -f "${BUILD_OUT}/${EXPORT_NAME}-debug.apk" ]; then
+            echo "ERROR: APK file was not generated!"
+            exit 1
+          fi
+
+      - name: Upload APK as Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.EXPORT_NAME }}-Android-APK
+          path: build/android/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach APK to GitHub Release (on version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/android/*.apk
+          generate_release_notes: true
