@@ -36,14 +36,13 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Resolve Godot Version & Project Path (Auto-Extract Zip & Create Presets)
+      - name: Resolve Godot Version & Prepare Android Project Files
         id: config
         run: |
           GODOT_VER="${{ github.event.inputs.godot_version || env.DEFAULT_GODOT_VERSION }}"
           echo "godot_version=${GODOT_VER}" >> "$GITHUB_OUTPUT"
           echo "godot_minor=${GODOT_VER:0:3}" >> "$GITHUB_OUTPUT"
 
-          # Check if project.godot is already extracted; if not, auto-extract any uploaded .zip file
           PROJ_FILE=$(find . -maxdepth 3 -name "project.godot" | head -n 1)
           if [ -z "$PROJ_FILE" ]; then
             ZIP_FILE=$(find . -maxdepth 3 -name "*.zip" | head -n 1)
@@ -62,82 +61,113 @@ jobs:
           echo "project_dir=${PROJ_DIR}" >> "$GITHUB_OUTPUT"
           echo "Found project.godot in: ${PROJ_DIR}"
 
-          # Ensure icon.svg exists in project root
-          if [ ! -f "${PROJ_DIR}/icon.svg" ]; then
-            cat << 'ICON_EOF' > "${PROJ_DIR}/icon.svg"
-          <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-            <rect width="512" height="512" rx="90" fill="#0a0c0a"/>
-            <circle cx="256" cy="266" r="200" fill="#2a1408"/>
-            <polygon points="90,460 130,180 170,460" fill="#070907"/>
-            <polygon points="340,460 385,165 430,460" fill="#070907"/>
-            <path d="M256 150 C290 210 320 250 300 310 C285 350 227 350 212 310 C192 250 222 210 256 150 Z" fill="#ffcc44"/>
-            <path d="M256 195 C275 235 292 260 280 300 C270 326 242 326 232 300 C220 260 237 235 256 195 Z" fill="#fff4cc"/>
-          </svg>
-          ICON_EOF
-          fi
+          python3 - "$PROJ_DIR" << 'PYEOF'
+          import os, sys, textwrap
 
-          # Ensure export_presets.cfg exists in project root
-          if [ ! -f "${PROJ_DIR}/export_presets.cfg" ]; then
-            echo "Generating export_presets.cfg in ${PROJ_DIR}..."
-            cat << 'PRESET_EOF' > "${PROJ_DIR}/export_presets.cfg"
-          [preset.0]
+          proj_dir = sys.argv[1]
 
-          name="Android"
-          platform="Android"
-          runnable=true
-          dedicated_server=false
-          custom_features=""
-          export_filter="all_resources"
-          include_filter=""
-          exclude_filter=""
-          export_path="build/android/DarkwoodClone-debug.apk"
-          encryption_include_filters=""
-          encryption_exclude_filters=""
-          encrypt_pck=false
-          encrypt_directory=false
+          # 1. Patch project.godot to enable ETC2/ASTC texture compression (required by Godot 4.6 Android export)
+          proj_godot_path = os.path.join(proj_dir, "project.godot")
+          with open(proj_godot_path, "r", encoding="utf-8") as f:
+              content = f.read()
 
-          [preset.0.options]
+          if "textures/vram_compression/import_etc2_astc=true" not in content:
+              if "[rendering]" in content:
+                  content = content.replace(
+                      "[rendering]",
+                      "[rendering]\n\ntextures/vram_compression/import_etc2_astc=true",
+                      1
+                  )
+              else:
+                  content += "\n[rendering]\n\ntextures/vram_compression/import_etc2_astc=true\n"
 
-          custom_template/debug=""
-          custom_template/release=""
-          gradle_build/use_gradle_build=false
-          gradle_build/export_format=0
-          gradle_build/min_sdk=""
-          gradle_build/target_sdk=""
-          architectures/armeabi-v7a=true
-          architectures/arm64-v8a=true
-          architectures/x86=false
-          architectures/x86_64=false
-          version/code=1
-          version/name="1.0.0"
-          package/unique_name="com.darkwoodclone.game"
-          package/name="DarkwoodClone"
-          package/signed=true
-          package/app_category=0
-          package/retain_data_on_uninstall=false
-          package/exclude_from_recents=false
-          package/show_in_android_tv=false
-          package/show_in_app_library=true
-          package/show_as_launcher_app=false
-          launcher_icons/main_192x192=""
-          launcher_icons/adaptive_foreground_432x432=""
-          launcher_icons/adaptive_background_432x432=""
-          graphics/opengl_debug=false
-          xr_features/xr_mode=0
-          screen/immersive_mode=true
-          screen/support_small=true
-          screen/support_normal=true
-          screen/support_large=true
-          screen/support_xlarge=true
-          user_data_backup/allow=false
-          command_line/extra_args=""
-          apk_expansion/enable=false
-          apk_expansion/SALT=""
-          apk_expansion/public_key=""
-          permissions/custom_permissions=PackedStringArray()
-          permissions/vibrate=true
-          PRESET_EOF
-          fi
+          if "[input_devices]" not in content:
+              content += "\n[input_devices]\n\npointing/emulate_touch_from_mouse=false\npointing/emulate_mouse_from_touch=true\n"
+
+          with open(proj_godot_path, "w", encoding="utf-8") as f:
+              f.write(content)
+          print("Updated project.godot with import_etc2_astc=true")
+
+          # 2. Write clean icon.svg (no leading spaces)
+          icon_path = os.path.join(proj_dir, "icon.svg")
+          icon_svg = textwrap.dedent("""\
+              <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+                <rect width="512" height="512" rx="90" fill="#0a0c0a"/>
+                <circle cx="256" cy="266" r="200" fill="#2a1408"/>
+                <polygon points="90,460 130,180 170,460" fill="#070907"/>
+                <polygon points="340,460 385,165 430,460" fill="#070907"/>
+                <path d="M256 150 C290 210 320 250 300 310 C285 350 227 350 212 310 C192 250 222 210 256 150 Z" fill="#ffcc44"/>
+                <path d="M256 195 C275 235 292 260 280 300 C270 326 242 326 232 300 C220 260 237 235 256 195 Z" fill="#fff4cc"/>
+              </svg>
+          """)
+          with open(icon_path, "w", encoding="utf-8") as f:
+              f.write(icon_svg)
+          print("Wrote icon.svg")
+
+          # 3. Write clean export_presets.cfg (no leading spaces)
+          preset_path = os.path.join(proj_dir, "export_presets.cfg")
+          preset_cfg = textwrap.dedent("""\
+              [preset.0]
+
+              name="Android"
+              platform="Android"
+              runnable=true
+              dedicated_server=false
+              custom_features=""
+              export_filter="all_resources"
+              include_filter=""
+              exclude_filter=""
+              export_path="build/android/DarkwoodClone-debug.apk"
+              encryption_include_filters=""
+              encryption_exclude_filters=""
+              encrypt_pck=false
+              encrypt_directory=false
+
+              [preset.0.options]
+
+              custom_template/debug=""
+              custom_template/release=""
+              gradle_build/use_gradle_build=false
+              gradle_build/export_format=0
+              gradle_build/min_sdk=""
+              gradle_build/target_sdk=""
+              architectures/armeabi-v7a=true
+              architectures/arm64-v8a=true
+              architectures/x86=false
+              architectures/x86_64=false
+              version/code=1
+              version/name="1.0.0"
+              package/unique_name="com.darkwoodclone.game"
+              package/name="DarkwoodClone"
+              package/signed=true
+              package/app_category=0
+              package/retain_data_on_uninstall=false
+              package/exclude_from_recents=false
+              package/show_in_android_tv=false
+              package/show_in_app_library=true
+              package/show_as_launcher_app=false
+              launcher_icons/main_192x192=""
+              launcher_icons/adaptive_foreground_432x432=""
+              launcher_icons/adaptive_background_432x432=""
+              graphics/opengl_debug=false
+              xr_features/xr_mode=0
+              screen/immersive_mode=true
+              screen/support_small=true
+              screen/support_normal=true
+              screen/support_large=true
+              screen/support_xlarge=true
+              user_data_backup/allow=false
+              command_line/extra_args=""
+              apk_expansion/enable=false
+              apk_expansion/SALT=""
+              apk_expansion/public_key=""
+              permissions/custom_permissions=PackedStringArray()
+              permissions/vibrate=true
+          """)
+          with open(preset_path, "w", encoding="utf-8") as f:
+              f.write(preset_cfg)
+          print("Wrote export_presets.cfg")
+          PYEOF
 
       - name: Cache Godot Binary & Export Templates
         id: cache-godot
@@ -176,7 +206,6 @@ jobs:
           sudo ln -sf /tmp/godot-bin/godot /usr/local/bin/godot
           godot --version
 
-          # Generate debug keystore for signing the APK
           KEYSTORE_PATH="$HOME/debug.keystore"
           if [ ! -f "$KEYSTORE_PATH" ]; then
             keytool -keyalg RSA -genkeypair \
@@ -189,30 +218,36 @@ jobs:
               -noprompt
           fi
 
-          # Export environment variables recognized by Godot 4
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=${KEYSTORE_PATH}" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
 
-          # Initialize Godot headless editor settings and write Android SDK & JDK paths
-          mkdir -p ~/.config/godot
-          for SETTINGS_FILE in \
-            ~/.config/godot/editor_settings-${{ steps.config.outputs.godot_minor }}.tres \
-            ~/.config/godot/editor_settings-4.tres; do
-            cat <<INNER_EOF > "$SETTINGS_FILE"
-          [gd_resource type="EditorSettings" format=3]
+          python3 - "${{ steps.config.outputs.godot_minor }}" "${JAVA_HOME}" "${ANDROID_HOME}" "${KEYSTORE_PATH}" << 'PYEOF'
+          import os, sys, textwrap
 
-          [resource]
-          export/android/java_sdk_path = "${JAVA_HOME}"
-          export/android/android_sdk_path = "${ANDROID_HOME}"
-          export/android/debug_keystore = "${KEYSTORE_PATH}"
-          export/android/debug_keystore_user = "androiddebugkey"
-          export/android/debug_keystore_pass = "android"
-          export/android/force_system_user = false
-          export/android/timestamping_authority_url = ""
-          export/android/shutdown_adb_on_exit = true
-          INNER_EOF
-          done
+          minor, java_home, android_home, keystore_path = sys.argv[1:5]
+          cfg_dir = os.path.expanduser("~/.config/godot")
+          os.makedirs(cfg_dir, exist_ok=True)
+
+          tres_content = textwrap.dedent(f"""\
+              [gd_resource type="EditorSettings" format=3]
+
+              [resource]
+              export/android/java_sdk_path = "{java_home}"
+              export/android/android_sdk_path = "{android_home}"
+              export/android/debug_keystore = "{keystore_path}"
+              export/android/debug_keystore_user = "androiddebugkey"
+              export/android/debug_keystore_pass = "android"
+              export/android/force_system_user = false
+              export/android/timestamping_authority_url = ""
+              export/android/shutdown_adb_on_exit = true
+          """)
+
+          for fname in [f"editor_settings-{minor}.tres", "editor_settings-4.tres"]:
+              with open(os.path.join(cfg_dir, fname), "w", encoding="utf-8") as f:
+                  f.write(tres_content)
+          print("Configured Godot EditorSettings with Android SDK & Keystore paths.")
+          PYEOF
 
       - name: Import Project Assets & Export Android APK
         run: |
@@ -220,9 +255,10 @@ jobs:
           mkdir -p "$BUILD_OUT"
 
           cd "${{ steps.config.outputs.project_dir }}"
+          rm -rf .godot
 
-          echo "Importing project resources..."
-          godot --headless --verbose --editor --quit || true
+          echo "Importing project resources with ETC2/ASTC enabled..."
+          godot --headless --verbose --import || godot --headless --verbose --editor --quit || true
 
           echo "Exporting signed Android Debug APK..."
           godot --headless --verbose --export-debug "Android" "${BUILD_OUT}/${EXPORT_NAME}-debug.apk"
